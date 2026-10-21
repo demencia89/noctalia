@@ -220,5 +220,11 @@
     "noctaliaVersion": null,
     "feature": "osd",
     "introduced": "`noctalia.osd.show(icon, value, opts)` for showing the shell OSD from plugins."
+  },
+  {
+    "level": 40,
+    "noctaliaVersion": null,
+    "feature": "raw-frame-control",
+    "introduced": "`ui.frame` for opaque RGBA frames from a local companion socket, with normalized pointer callbacks."
   }
 ]

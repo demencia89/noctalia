@@ -118,6 +118,9 @@ namespace scripting {
       if (src.needsFrameTick.has_value()) {
         dest.needsFrameTick = src.needsFrameTick;
       }
+      if (src.panelSize.has_value()) {
+        dest.panelSize = src.panelSize;
+      }
     }
 
     void mergeResult(ScriptResult& dest, const ScriptResult& src) {

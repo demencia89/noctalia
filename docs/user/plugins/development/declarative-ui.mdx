@@ -57,6 +57,7 @@ compact: it hugs its content instead of using the taller settings-panel control 
 | `ui.markdown` | `text` (markdown source - see below), `width`, `height` |
 | `ui.glyph` | `name` (Tabler/Nerd-Font glyph), `size`, `color` |
 | `ui.image` | `path` (plugin-relative, `~`, or absolute), `width`, `height`, `radius`, `fit` (`contain`/`cover`/`stretch`), `border`, `borderWidth`, `onClick`, `onHover`, `tooltip` |
+| `ui.frame` | `path` (local Unix stream socket), `width`, `height`, `radius`, `onPointer`, `onKey` (see companion frames below) |
 | `ui.box` | `fill`, `radius`, `border`, `borderWidth`, `softness`, `width`, `height`, `onClick`, `onHover`, `tooltip` |
 | `ui.separator` | `thickness`, `color`, `spacing`, `orientation` (`auto`/`horizontal`/`vertical`) |
 | `ui.spacer` | flexible filler (use `flexGrow`) |
@@ -203,6 +204,80 @@ prop is logged and skipped - typos surface in the log instead of failing silentl
 The reference implementation is the official `noctalia/timer` plugin - a countdown timer with start/pause/reset
 buttons and a progress bar.
 
+## Companion frames
+
+`ui.frame` displays a live stream of opaque RGBA pixels from a local companion process
+(requires <PluginApiBadge feature="raw-frame-control" />). The companion owns capture,
+decoding, audio, and input forwarding. Noctalia owns display and fits the frame inside
+the control while preserving its aspect ratio. Supply both `width` and `height`.
+Optional `radius` rounds the displayed image corners using the existing image renderer.
+
+```lua
+ui.frame({
+  key = "preview", path = "/run/user/1000/my-preview.sock", width = 320, height = 640,
+  onPointer = function(kind, positionJson)
+    local position = noctalia.json.decode(positionJson)
+    -- kind: "press", "move", "release", "cancel", or "scroll".
+    -- position.x/y: 0..1 within the displayed pixels, excluding letterboxing.
+  end,
+})
+```
+
+`onPointer` reports left, right and middle buttons as `position.button` strings
+(`"left"`, `"right"`, `"middle"`). Only left-button drags produce `move` events.
+A press in the letterbox is ignored; a drag
+outside the image is clamped to the nearest edge. `cancel` ends a drag without
+releasing at a new position (its coordinates are zero), including when the stream
+disconnects or changes dimensions.
+
+`scroll` reports wheel/touchpad steps over the image in `position.dx` and
+`position.dy` (positive right/down). High-resolution deltas accumulate into
+steps using the normal input-area handling. No button press or keyboard focus
+is needed; letterboxing and an active pointer drag reject wheel input. Scroll
+events over other controls follow their normal routing.
+
+Optional `onKey(kind, keyJson)` makes the frame focusable by clicking it. It
+receives `"press"`/`"release"` and JSON with XKB `sym`, Unicode `utf32`,
+`modifiers` (Shift=1, Ctrl=2, Alt=4, Super=8), and `preedit` (composition preview).
+Repeats arrive as presses; plugins should not inject preedit text. Keys are
+delivered only while the frame has keyboard focus and the socket is connected.
+Other native controls keep their normal keyboard behavior. Host shortcuts,
+including panel dismissal and Tab navigation, retain priority.
+
+The `path` is a filesystem Unix `SOCK_STREAM` socket, resolved like an image path.
+The companion creates the socket in a private runtime directory and listens;
+the shell accepts only a companion running under the same effective user ID.
+Noctalia connects when the control is visible, retries after disconnect, and closes
+the connection when the control is hidden or destroyed. An empty `path` stops the
+stream and clears the image. On disconnection the last complete frame stays visible.
+
+For each frame, Noctalia sends one ASCII `R` byte. The companion responds with:
+
+| Bytes | Value |
+|-------|-------|
+| 0..3 | ASCII `NRF1` (protocol version 1) |
+| 4..7 | width, unsigned 32-bit big-endian |
+| 8..11 | height, unsigned 32-bit big-endian |
+| 12.. | `width * height * 4` RGBA8 bytes, top row first, alpha 255 |
+
+Dimensions may change between frames. Each dimension is 1..4096 and the frame
+must contain at most 4,194,304 pixels (16 MiB). Invalid headers close the connection.
+Reads are nonblocking and bounded to 8 MiB per timer tick; at most one complete
+frame is consumed per 16 ms tick. Hidden or disconnected controls poll every
+250 ms. There is one outstanding request per control; the next request is sent
+as soon as a frame completes, so the producer can prepare its reply between ticks.
+A reply must complete within five seconds or the connection is closed and retried.
+The producer should continuously replace its latest captured frame and send that
+frame when requested, rather than queue older frames. Same-size frames update the
+existing texture. Frame bytes never pass through the Luau VM.
+For small previews, sizing the producer's socket send buffer to hold one complete
+reply avoids splitting each frame across multiple timer ticks, subject to the OS buffer limit.
+
+This is a CPU upload path intended for small previews. Limit the producer's
+resolution and frame rate; it provides no hardware decoding or zero-copy import.
+Noctalia does not start or stop the companion process. Keep it alive separately or
+manage it using the panel lifecycle callbacks.
+
 ## `barWidget.render` - declarative bar widget UI {#barwidgetrender--declarative-bar-widget-ui}
 
 A `[[widget]]` entry can render a `ui.*` tree with `barWidget.render(tree)` instead of the imperative
@@ -255,6 +330,11 @@ full-available rather than a broken surface.
 Set `dismiss_on_outside_click = false` for auth-style prompts (password / API key) so a misclick does not discard
 the panel; the default is `true`. Requires <PluginApiBadge feature="dismiss-on-outside-click" />. Escape and an explicit Close / Cancel control still
 dismiss it.
+
+`panel.setSize(width, height)` (API 40) changes a transient panel's preferred size
+in logical pixels without closing it or recreating its controls. Dimensions must
+be finite numbers in 1..4096; the host still caps requests to the output. Fixed-size
+attached and detached panels can resize; manifest dimensions are their initial size.
 
 `setWantsSecondTicks(true)` runs `update()` on second boundaries; `setNeedsFrameTick(true)` additionally delivers
 `onFrameTick(deltaMs)` every frame while the panel is open, for animation the script drives itself. Ticks stop on

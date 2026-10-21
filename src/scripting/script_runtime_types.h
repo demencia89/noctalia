@@ -109,6 +109,11 @@ namespace scripting {
     bool operator==(const ScriptLauncherResultSet&) const = default;
   };
 
+  struct ScriptPanelSize {
+    float width = 0.0F;
+    float height = 0.0F;
+  };
+
   struct ScriptPatch {
     std::optional<std::string> text;
     std::optional<std::string> glyph;
@@ -138,8 +143,9 @@ namespace scripting {
     std::optional<bool> wantsSecondTicks;
     std::optional<bool> needsFrameTick;
 
-    // Panel field (the `panel.*` namespace): a close request.
+    // Panel lifecycle and preferred size requests (the `panel.*` namespace).
     std::optional<bool> requestClose;
+    std::optional<ScriptPanelSize> panelSize;
 
     [[nodiscard]] bool empty() const {
       return !text.has_value()
@@ -162,7 +168,8 @@ namespace scripting {
           && !uiTree.has_value()
           && !wantsSecondTicks.has_value()
           && !needsFrameTick.has_value()
-          && !requestClose.has_value();
+          && !requestClose.has_value()
+          && !panelSize.has_value();
     }
   };
 

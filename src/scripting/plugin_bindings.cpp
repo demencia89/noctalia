@@ -621,6 +621,23 @@ namespace {
 
   // ── panel.* — declarative UI tree for a [[panel]] entry ──
 
+  int luau_panel_setSize(lua_State* L) {
+    const double width = luaL_checknumber(L, 1);
+    const double height = luaL_checknumber(L, 2);
+    if (!std::isfinite(width)
+        || !std::isfinite(height)
+        || width < 1.0
+        || height < 1.0
+        || width > 4096.0
+        || height > 4096.0) {
+      luaL_error(L, "panel.setSize: dimensions must be finite numbers between 1 and 4096");
+    }
+    if (auto* context = getContext(L)) {
+      context->patch.panelSize = scripting::ScriptPanelSize{static_cast<float>(width), static_cast<float>(height)};
+    }
+    return 0;
+  }
+
   // panel.close() — request the host close this panel.
   int luau_panel_close(lua_State* L) {
     if (auto* context = getContext(L)) {
@@ -780,6 +797,7 @@ namespace {
 
   const luaL_Reg kPanelLib[] = {
       {"render", luau_ui_render},
+      {"setSize", luau_panel_setSize},
       {"close", luau_panel_close},
       {"openContextMenu", luau_panel_openContextMenu},
       {"setWantsSecondTicks", luau_ui_setWantsSecondTicks},

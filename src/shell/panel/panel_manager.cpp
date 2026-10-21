@@ -1074,6 +1074,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     m_panelInsetY = visualY - surfaceY;
     m_panelVisualWidth = panelWidth;
     m_panelVisualHeight = panelHeight;
+    m_attachedExtraWidth = surfaceWidth - panelWidth;
+    m_attachedExtraHeight = surfaceHeight - panelHeight;
     m_attachedBackgroundOpacity = m_activePanel->inheritsBarBackgroundOpacity()
         ? barConfig.backgroundOpacity
         : m_activePanel->attachedBackgroundOpacityOverride();
@@ -1852,7 +1854,7 @@ void PanelManager::refresh() {
 }
 
 void PanelManager::relayoutActivePanelPreferredSize() {
-  if (!isOpen() || m_activePanel == nullptr || m_surface == nullptr || m_layerSurface == nullptr || m_attachedToBar) {
+  if (!isOpen() || m_activePanel == nullptr || m_surface == nullptr || m_layerSurface == nullptr) {
     return;
   }
   if (m_platform == nullptr || m_config == nullptr) {
@@ -1873,6 +1875,54 @@ void PanelManager::relayoutActivePanelPreferredSize() {
     panelHeight = std::min(panelHeight, static_cast<std::uint32_t>(std::max(1, outputHeight - screenPadding * 2)));
   }
   if (panelWidth == m_panelVisualWidth && panelHeight == m_panelVisualHeight) {
+    return;
+  }
+
+  if (m_attachedToBar) {
+    const auto deltaWidth = static_cast<std::int32_t>(panelWidth) - static_cast<std::int32_t>(m_panelVisualWidth);
+    const auto deltaHeight = static_cast<std::int32_t>(panelHeight) - static_cast<std::int32_t>(m_panelVisualHeight);
+    const auto surfaceWidth = panelWidth + m_attachedExtraWidth;
+    const auto surfaceHeight = panelHeight + m_attachedExtraHeight;
+    const bool vertical = m_attachedBarPosition == "left" || m_attachedBarPosition == "right";
+    auto top = m_layerSurface->marginTop();
+    auto left = m_layerSurface->marginLeft();
+    std::int32_t dx = m_attachedBarPosition == "right" ? -deltaWidth : 0;
+    std::int32_t dy = m_attachedBarPosition == "bottom" ? -deltaHeight : 0;
+    if (vertical) {
+      const auto next =
+          std::clamp(top - deltaHeight / 2, 0, std::max(0, outputHeight - static_cast<std::int32_t>(surfaceHeight)));
+      dy = next - top;
+      top = next;
+    } else {
+      const auto next =
+          std::clamp(left - deltaWidth / 2, 0, std::max(0, outputWidth - static_cast<std::int32_t>(surfaceWidth)));
+      dx = next - left;
+      left = next;
+    }
+    m_layerSurface->setMargins(top, m_layerSurface->marginRight(), m_layerSurface->marginBottom(), left);
+    if (m_attachedPanelGeometry.has_value()) {
+      auto& geometry = *m_attachedPanelGeometry;
+      geometry.x += static_cast<float>(dx);
+      geometry.y += static_cast<float>(dy);
+      geometry.width += static_cast<float>(deltaWidth);
+      geometry.height += static_cast<float>(deltaHeight);
+    }
+    if (m_panelOutputInputRect.has_value()) {
+      auto& rect = *m_panelOutputInputRect;
+      rect.x += dx;
+      rect.y += dy;
+      rect.width = static_cast<int>(panelWidth);
+      rect.height = static_cast<int>(panelHeight);
+      m_clickShield.setPanelInputRect(m_output, rect);
+    }
+    m_panelVisualWidth = panelWidth;
+    m_panelVisualHeight = panelHeight;
+    m_layerSurface->requestSize(surfaceWidth, surfaceHeight);
+    m_surface->setInputRegion(
+        {InputRect{m_panelInsetX, m_panelInsetY, static_cast<int>(panelWidth), static_cast<int>(panelHeight)}}
+    );
+    publishAttachedPanelGeometry(m_attachedRevealProgress);
+    m_surface->requestLayout();
     return;
   }
 

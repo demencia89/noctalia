@@ -10,6 +10,7 @@
 #include "ui/controls/drag_source.h"
 #include "ui/controls/drop_zone.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/frame.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/graph.h"
 #include "ui/controls/image.h"
@@ -475,6 +476,8 @@ namespace ui {
       static const std::unordered_set<std::string> kImage = {"width",   "height",  "flexGrow", "opacity", "visible",
                                                              "path",    "radius",  "fit",      "border",  "borderWidth",
                                                              "onClick", "onHover", "tooltip"};
+      static const std::unordered_set<std::string> kFrame = {"width", "height", "flexGrow",  "opacity", "visible",
+                                                             "path",  "radius", "onPointer", "onKey"};
       static const std::unordered_set<std::string> kSeparator = {"width",   "height",  "flexGrow",
                                                                  "opacity", "visible", "thickness",
                                                                  "color",   "spacing", "orientation"};
@@ -536,6 +539,9 @@ namespace ui {
       }
       if (type == "image") {
         return kImage;
+      }
+      if (type == "frame") {
+        return kFrame;
       }
       if (type == "separator") {
         return kSeparator;
@@ -613,7 +619,10 @@ namespace ui {
     });
   }
 
-  UiTreeReconciler::~UiTreeReconciler() { reset(); }
+  UiTreeReconciler::~UiTreeReconciler() {
+    m_callbackLifetime.reset();
+    reset();
+  }
 
   void UiTreeReconciler::setScale(float scale) {
     m_scale = scale;
@@ -708,6 +717,9 @@ namespace ui {
         return wrapClickable(std::make_unique<Image>(), callbackProp(desired, "onClick") != nullptr);
       }
       return std::make_unique<Image>();
+    }
+    if (desired.type == "frame") {
+      return std::make_unique<Frame>();
     }
     if (desired.type == "separator") {
       return std::make_unique<Separator>();
@@ -1447,6 +1459,54 @@ namespace ui {
         }
       }
       syncWrapperCallbacks(slot, desired, node);
+      return;
+    }
+
+    if (desired.type == "frame") {
+      auto* frame = static_cast<Frame*>(node);
+      frame->setSize(
+          width != nullptr ? scaled(*width) : frame->width(), height != nullptr ? scaled(*height) : frame->height()
+      );
+      const auto* path = strProp(desired, "path");
+      const std::string resolved = path != nullptr && !path->empty() ? (m_resolver ? m_resolver(*path) : *path) : "";
+      frame->setPath(resolved);
+      const auto* radius = numProp(desired, "radius");
+      frame->setRadius(radius != nullptr ? std::max(0.0F, scaled(*radius)) : 0.0F);
+      const auto* callback = callbackProp(desired, "onPointer");
+      if (callback != nullptr && m_sink) {
+        frame->setPointerSink([sink = m_sink, name = *callback, alive = std::weak_ptr<bool>(m_callbackLifetime)](
+                                  std::string_view kind, float x, float y, float dx, float dy, std::uint32_t button
+                              ) {
+          // A host can destroy its scene after the reconciler and runtime.
+          if (alive.expired()) {
+            return;
+          }
+          const auto* buttonName = button == BTN_RIGHT ? "right" : (button == BTN_MIDDLE ? "middle" : "left");
+          const auto payload = kind == "scroll" ? std::format(R"({{"x":{},"y":{},"dx":{},"dy":{}}})", x, y, dx, dy)
+                                                : std::format(R"({{"x":{},"y":{},"button":"{}"}})", x, y, buttonName);
+          sink(ControlCallback(name, std::string(kind), payload));
+        });
+      } else {
+        frame->setPointerSink({});
+      }
+      const auto* keyCallback = callbackProp(desired, "onKey");
+      if (keyCallback != nullptr && m_sink) {
+        frame->setKeySink([sink = m_sink, name = *keyCallback, alive = std::weak_ptr<bool>(m_callbackLifetime)](
+                              std::string_view kind, const InputArea::KeyData& key
+                          ) {
+          if (!alive.expired()) {
+            sink(ControlCallback(
+                name, std::string(kind),
+                std::format(
+                    R"({{"sym":{},"utf32":{},"modifiers":{},"preedit":{}}})", key.sym, key.utf32, key.modifiers,
+                    key.preedit
+                )
+            ));
+          }
+        });
+      } else {
+        frame->setKeySink({});
+      }
       return;
     }
 

@@ -149,6 +149,7 @@ namespace ui {
     [[nodiscard]] static const Slot* findKeyedSlot(const std::vector<Slot>& slots, const std::string& key);
 
     CallbackSink m_sink;
+    std::shared_ptr<bool> m_callbackLifetime = std::make_shared<bool>(true);
     PathResolver m_resolver;
     FocusRequestSink m_focusSink;
     float m_scale = 1.0F;

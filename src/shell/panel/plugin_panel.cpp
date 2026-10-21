@@ -350,6 +350,15 @@ void PluginPanel::handleScriptResult(scripting::ScriptResult result) {
   }
 
   const auto& patch = result.patch;
+  if (patch.panelSize.has_value()
+      && (m_preferredWidth != patch.panelSize->width || m_preferredHeight != patch.panelSize->height)) {
+    m_preferredWidth = patch.panelSize->width;
+    m_preferredHeight = patch.panelSize->height;
+    auto& panels = PanelManager::instance();
+    if (panels.activePanelId() == m_entryId) {
+      panels.relayoutActivePanelPreferredSize();
+    }
+  }
   if (patch.wantsSecondTicks.has_value()) {
     m_wantsSecondTicks = *patch.wantsSecondTicks;
     startTickTimer();

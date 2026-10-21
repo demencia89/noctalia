@@ -5,6 +5,7 @@
 #include "scripting/plugin_bindings.h"
 #include "scripting/ui_handler_table.h"
 #include "scripting/ui_prelude.h"
+#include "test_check.h"
 
 #include <cstddef>
 #include <cstdio>
@@ -119,6 +120,17 @@ order = ["a", "b"]
       && ok;
   ok = checkConfigSetting("shell.nope", "assert(v == nil)", "getSetting should return nil for missing paths") && ok;
   ok = expect(runLuau(state, "=ui-prelude", scripting::kUiPrelude), "failed to execute production UI prelude") && ok;
+  TEST_CHECK(runLuau(state, "=panel-size", "panel.setSize(560, 600)"));
+  TEST_CHECK(context.patch.panelSize.has_value());
+  TEST_CHECK(context.patch.panelSize->width == 560.0F && context.patch.panelSize->height == 600.0F);
+  TEST_CHECK(!context.patch.empty());
+  TEST_CHECK(runLuau(state, "=invalid-panel-size", R"(
+    for _, size in ipairs({0, -1, 4097, math.huge, 0/0}) do
+      assert(not pcall(panel.setSize, size, 600))
+      assert(not pcall(panel.setSize, 560, size))
+    end
+  )"));
+  context.patch.panelSize.reset();
   ok = expect(
            runLuau(state, "=empty-accepts", "panel.render(ui.dropZone({ accepts = {} }))"),
            "failed to render DropZone with an empty accepts list"

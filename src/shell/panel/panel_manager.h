@@ -140,7 +140,7 @@ public:
   void clearActivePopup();
 
   void refresh();
-  // Re-read preferredWidth/Height on the active detached panel and request a new
+  // Re-read preferredWidth/Height on the active panel and request a new
   // layer-shell size (e.g. polkit growing when a password field appears).
   void relayoutActivePanelPreferredSize();
   // Refresh a single panel by id, whichever host owns it. Used by content that
@@ -264,6 +264,8 @@ private:
   std::int32_t m_panelInsetX = 0;
   std::int32_t m_panelInsetY = 0;
   std::uint32_t m_panelVisualWidth = 0;
+  std::uint32_t m_attachedExtraWidth = 0;
+  std::uint32_t m_attachedExtraHeight = 0;
   std::uint32_t m_panelVisualHeight = 0;
   std::optional<InputRect> m_panelOutputInputRect;
   // Fill axes derive their visual size from the compositor-configured surface
